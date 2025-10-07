@@ -47,6 +47,8 @@ let audioChunks = [];
 let isRecording = false;
 let chatMode = "chat"; // "chat" or "voice"
 let recordingStartTime = 0;
+const VOICE_AGENT_PATH = "/rezept/kraeuter-pasta-chorizo-crunch";
+const isVoiceAgentPage = window.location.pathname.includes(VOICE_AGENT_PATH);
 
 /* ═ Extract Page Content for Context ═ */
 function getPageContext() {
@@ -257,6 +259,9 @@ function closePanel(){
 /* ═ PANEL עם Hero + Sponsor Banner ═ */
 function makePanel(){
   panel = document.createElement("div"); panel.id="cpanel"; panel.dir="ltr";
+
+  const voiceAgentButton = isVoiceAgentPage ? '<button id="voice-agent-btn" title="Sprachanruf starten">📞</button>' : '';
+
   panel.innerHTML = `
     <div id="chead" class="panel-blur-wrap">
       <div class="hero">
@@ -297,8 +302,9 @@ function makePanel(){
 
     <div id="cinput" class="panel-blur-wrap">
       <input id="chat-input" placeholder="Nachricht schreiben…">
+      <button id="send-btn">Senden</button>
       <button id="voice-btn" title="Sprachaufnahme">🎤</button>
-      <button id="send-btn">Fragen</button>
+      ${voiceAgentButton}
     </div>
   `;
   document.body.appendChild(panel);
@@ -313,6 +319,11 @@ function makePanel(){
   inputEl.addEventListener("keydown",e=>e.key==="Enter"&&send());
   panel.querySelector("#cclose").onclick = closePanel;
   document.addEventListener("keydown",e=>{ if(e.key==="Escape") closePanel(); });
+
+  // Voice agent button (only on specific page)
+  if (isVoiceAgentPage) {
+    panel.querySelector("#voice-agent-btn").onclick = openVoiceAgent;
+  }
 
   // Mode selector event listeners
   panel.querySelectorAll(".mode-btn").forEach(btn => {
@@ -754,16 +765,18 @@ const style=document.createElement("style"); style.textContent=`
 .voice-bubble span{ font-size:12px; color:#444; min-width:40px; text-align:left; }
 
 /* Input */
-#cinput{ display:flex; gap:8px; padding:10px; border-top:1px solid #e6eaf0; background:#fff; align-items:center; }
-#cinput #chat-input{ flex:1; border:1px solid #cfd8e3; border-radius:12px; padding:10px 12px; font-size:14px; direction:ltr; text-align:left; }
-#cinput #voice-btn{ border:none; background:#0b6cff; color:#fff; padding:10px 12px; border-radius:12px; cursor:pointer; font-size:18px; transition:all .2s; }
+#cinput{ display:flex; gap:6px; padding:10px; border-top:1px solid #e6eaf0; background:#fff; align-items:center; }
+#cinput #chat-input{ flex:1; border:1px solid #cfd8e3; border-radius:12px; padding:10px 12px; font-size:14px; direction:ltr; text-align:left; min-width:0; }
+#cinput #send-btn{ border:none; background:#0b6cff; color:#fff; padding:10px 14px; border-radius:12px; cursor:pointer; font-weight:700; font-size:13px; white-space:nowrap; flex-shrink:0; }
+#cinput #send-btn:hover{ background:#0957cc; }
+#cinput #voice-btn{ border:none; background:#0b6cff; color:#fff; padding:10px 12px; border-radius:12px; cursor:pointer; font-size:18px; transition:all .2s; flex-shrink:0; }
 #cinput #voice-btn:hover{ background:#0957cc; transform:scale(1.05); }
+#cinput #voice-agent-btn{ border:none; background:#10b981; color:#fff; padding:10px 12px; border-radius:12px; cursor:pointer; font-size:18px; transition:all .2s; flex-shrink:0; }
+#cinput #voice-agent-btn:hover{ background:#059669; transform:scale(1.05); }
 #cinput.recording-active #voice-btn{ background:#ff2d55; animation:pulse-mic 1.5s ease-in-out infinite; }
 #cinput.processing-active #voice-btn{ background:#ccc; pointer-events:none; opacity:0.6; }
-#cinput.recording-active #chat-input, #cinput.recording-active #send-btn{ display:none; }
-#cinput.processing-active #chat-input, #cinput.processing-active #send-btn{ display:none; }
-#cinput #send-btn{ border:none; background:#0b6cff; color:#fff; padding:10px 18px; border-radius:12px; cursor:pointer; font-weight:700; }
-#cinput #send-btn:hover{ background:#0957cc; }
+#cinput.recording-active #chat-input, #cinput.recording-active #send-btn, #cinput.recording-active #voice-agent-btn{ display:none; }
+#cinput.processing-active #chat-input, #cinput.processing-active #send-btn, #cinput.processing-active #voice-agent-btn{ display:none; }
 
 /* Voice Visualizer (WhatsApp style) */
 .voice-visualizer{
@@ -965,6 +978,44 @@ async function askAI(){
   return d.choices?.[0]?.message?.content?.trim() || "Keine Antwort.";
 }
 
+
+/* Voice Agent Functions */
+function openVoiceAgent() {
+  // Check if widget is already loaded
+  if (!document.querySelector('elevenlabs-convai')) {
+    // Create the widget element
+    const widget = document.createElement('elevenlabs-convai');
+    widget.setAttribute('agent-id', 'agent_3901k6wsg096e5as4db3jgxty41j');
+    document.body.appendChild(widget);
+
+    // Load the script if not already loaded
+    if (!document.querySelector('script[src*="elevenlabs"]')) {
+      const script = document.createElement('script');
+      script.src = 'https://unpkg.com/@elevenlabs/convai-widget-embed';
+      script.async = true;
+      script.type = 'text/javascript';
+      document.body.appendChild(script);
+
+      // Wait for script to load then trigger widget
+      script.onload = () => {
+        setTimeout(() => {
+          const btn = document.querySelector('elevenlabs-convai')?.shadowRoot?.querySelector('button');
+          if (btn) btn.click();
+        }, 500);
+      };
+    } else {
+      // Script already loaded, just trigger the widget
+      setTimeout(() => {
+        const btn = document.querySelector('elevenlabs-convai')?.shadowRoot?.querySelector('button');
+        if (btn) btn.click();
+      }, 300);
+    }
+  } else {
+    // Widget exists, just click it
+    const btn = document.querySelector('elevenlabs-convai')?.shadowRoot?.querySelector('button');
+    if (btn) btn.click();
+  }
+}
 
 /* הסרת Glassix אם קיים */
 new MutationObserver(()=>{const g=document.querySelector('#glassix-widget-launcher-closed-wrapper');if(g)g.remove();})
