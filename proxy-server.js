@@ -80,8 +80,14 @@ const proxyMiddleware = createProxyMiddleware({
     const contentType = proxyRes.headers['content-type'] || '';
     const encoding = proxyRes.headers['content-encoding'];
 
-    // Only modify HTML responses
-    if (contentType.includes('text/html')) {
+    // Modify HTML, CSS, and JavaScript responses to rewrite URLs
+    const shouldModify = contentType.includes('text/html') ||
+                         contentType.includes('text/css') ||
+                         contentType.includes('application/javascript') ||
+                         contentType.includes('application/x-javascript') ||
+                         contentType.includes('text/javascript');
+
+    if (shouldModify) {
       let body = Buffer.from('');
 
       proxyRes.on('data', (chunk) => {
@@ -105,16 +111,18 @@ const proxyMiddleware = createProxyMiddleware({
           decompressed = body.toString('utf8');
         }
 
-        // Rewrite URLs to point to localhost instead of the actual site
-        decompressed = decompressed.replace(/https?:\/\/(www\.)?eatclub\.de/gi, `http://localhost:${PORT}`);
+        // Rewrite URLs to point to the proxy server instead of the actual site
+        const proxyUrl = process.env.RENDER_EXTERNAL_URL || `http://localhost:${PORT}`;
+        decompressed = decompressed.replace(/https?:\/\/(www\.)?eatclub\.de/gi, proxyUrl);
 
-        // Inject the widget script before closing </body> tag
-        const widgetScript = `
+        // For HTML only: Inject the widget script before closing </body> tag
+        if (contentType.includes('text/html')) {
+          const widgetScript = `
 <!-- FanGuru Widget Injection -->
 <script src="/funke-widget.js"></script>
 </body>`;
-
-        decompressed = decompressed.replace(/<\/body>/i, widgetScript);
+          decompressed = decompressed.replace(/<\/body>/i, widgetScript);
+        }
 
         // Remove encoding-related headers
         delete proxyRes.headers['content-encoding'];
