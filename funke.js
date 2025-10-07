@@ -504,6 +504,7 @@ async function processVoiceInput(audioBlob) {
   removeRecordingIndicator();
   showProcessingIndicator();
 
+  // Keep mic animation visible throughout entire process
   const anim = showAnim("mic");
 
   try {
@@ -529,9 +530,8 @@ async function processVoiceInput(audioBlob) {
       const { text } = await sttResponse.json();
       console.log('[FanGuru] Transcribed text:', text);
 
-      anim.remove();
-
       if (!text || text.trim() === '') {
+        anim.remove();
         removeProcessingIndicator();
         render("⚠️ Keine Sprache erkannt", "in", false);
         return;
@@ -540,10 +540,8 @@ async function processVoiceInput(audioBlob) {
       // Show user's transcribed message
       render(text, "out");
 
-      // Get AI response - use mic animation in voice mode, typing in chat mode
-      const aiAnim = showAnim(chatMode === "voice" ? "mic" : "typing");
+      // Get AI response - keep mic animation visible
       const aiResponse = await askAI();
-      aiAnim.remove();
 
       // Render response based on mode
       if (chatMode === "voice") {
@@ -561,12 +559,16 @@ async function processVoiceInput(audioBlob) {
 
         const { audio: audioUrl } = await ttsResponse.json();
         console.log('[FanGuru] Playing voice response');
-        renderVoice(audioUrl);
+
+        // Remove animation and processing indicator only after everything is done
+        anim.remove();
         removeProcessingIndicator();
+        renderVoice(audioUrl);
       } else {
         // Chat mode: only text response
-        render(aiResponse, "in");
+        anim.remove();
         removeProcessingIndicator();
+        render(aiResponse, "in");
       }
     };
   } catch (error) {
@@ -757,7 +759,7 @@ const style=document.createElement("style"); style.textContent=`
 #cinput #voice-btn{ border:none; background:#0b6cff; color:#fff; padding:10px 12px; border-radius:12px; cursor:pointer; font-size:18px; transition:all .2s; }
 #cinput #voice-btn:hover{ background:#0957cc; transform:scale(1.05); }
 #cinput.recording-active #voice-btn{ background:#ff2d55; animation:pulse-mic 1.5s ease-in-out infinite; }
-#cinput.processing-active #voice-btn{ background:#ff9500; animation:pulse-mic 1.5s ease-in-out infinite; }
+#cinput.processing-active #voice-btn{ background:#ccc; pointer-events:none; opacity:0.6; }
 #cinput.recording-active #chat-input, #cinput.recording-active #send-btn{ display:none; }
 #cinput.processing-active #chat-input, #cinput.processing-active #send-btn{ display:none; }
 #cinput #send-btn{ border:none; background:#0b6cff; color:#fff; padding:10px 18px; border-radius:12px; cursor:pointer; font-weight:700; }
@@ -827,6 +829,19 @@ const style=document.createElement("style"); style.textContent=`
     left:0 !important;
     bottom:0 !important;
     border-radius:0 !important;
+  }
+  #cclose{
+    top:12px;
+    left:12px;
+    z-index:10;
+    background:rgba(0,0,0,0.5);
+    width:32px;
+    height:32px;
+    border-radius:50%;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    font-size:20px;
   }
   .preroll-content{ width:95%; }
 }
