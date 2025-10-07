@@ -916,9 +916,9 @@ const style=document.createElement("style"); style.textContent=`
 /* Voice Agent Overlay (Mobile) */
 #fg-voice-agent-overlay{
   position:fixed; inset:0;
-  background:linear-gradient(135deg, rgba(11,108,255,0.15) 0%, rgba(16,185,129,0.15) 100%);
-  backdrop-filter:blur(30px) saturate(180%);
-  -webkit-backdrop-filter:blur(30px) saturate(180%);
+  background:linear-gradient(135deg, rgba(11,108,255,0.85) 0%, rgba(16,185,129,0.85) 100%);
+  backdrop-filter:blur(50px) saturate(200%);
+  -webkit-backdrop-filter:blur(50px) saturate(200%);
   z-index:999998; display:flex; align-items:center; justify-content:center;
   animation:fg-overlay-fade-in 0.3s ease;
 }
