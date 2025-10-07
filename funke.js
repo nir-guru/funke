@@ -17,19 +17,22 @@ const DING_URL    = "https://cdn.jsdelivr.net/gh/saintplay/sounds@master/coins/c
 const AVATAR_URL  = "https://www.eatclub.de/wp-content/uploads/2022/02/foto-felix-300x300.jpg";
 const LOGO_URL    = "https://i.ibb.co/Xfk11T1V/Chat-GPT-Image-Oct-6-2025-03-37-25-PM-removebg-preview.png";
 const SPONSOR_IMG = "https://www.zwilling.com/dw/image/v2/BCGV_PRD/on/demandware.static/-/Sites-zwilling-master-catalog/default/dw55beb4c8/images/large/1010887_1.jpg";
+const PREROLL_VIDEO = "V_A-am90kzg"; // YouTube video ID
+const PREROLL_COOLDOWN = 60 * 60 * 1000; // 1 hour in milliseconds
 
 const BASE_RULES = `Wichtig:
 - Erfinde keine Fakten oder Zahlen.
 - Wenn du keine Informationen hast, sag es.
 - Du kannst veraltete Daten verwenden, aber warne, dass sie nicht aktuell sind.
-- Bevorzuge Fakten gegenüber Meinungen.`;
+- Bevorzuge Fakten gegenüber Meinungen.
+- WICHTIG: Antworte IMMER in der gleichen Sprache, in der der Benutzer die Frage gestellt hat. Wenn der Benutzer auf Englisch fragt, antworte auf Englisch. Wenn auf Deutsch, antworte auf Deutsch.`;
 
 /* ═ Chef Agent ═ */
 const Pini = {
   id: "chef",
   name: "Chef",
   avatar: AVATAR_URL,
-  sys: `${BASE_RULES} Du bist ein professioneller Koch-Assistent. Hilf Benutzern mit Rezepten, Kochtechniken, Zutatenersatz und kulinarischen Fragen. Halte die Antworten präzise und praktisch.`,
+  sys: `${BASE_RULES} Du bist ein professioneller Koch-Assistent. Hilf Benutzern mit Rezepten, Kochtechniken, Zutatenersatz und kulinarischen Fragen. Halte die Antworten präzise und praktisch. IMPORTANT: Always respond in the SAME language the user asks in (English for English questions, German for German questions).`,
   qa: []
 };
 
@@ -39,6 +42,11 @@ let hist = [];
 let panel = null;
 let launcher = null;
 let pageContext = "";
+let mediaRecorder = null;
+let audioChunks = [];
+let isRecording = false;
+let chatMode = "chat"; // "chat" or "voice"
+let recordingStartTime = 0;
 
 /* ═ Extract Page Content for Context ═ */
 function getPageContext() {
@@ -138,10 +146,72 @@ function positionPanel(){
   panel.style.bottom = `${bottomPx}px`;
 }
 
+/* ═ Check if preroll should be shown ═ */
+function shouldShowPreroll(){
+  const lastShown = localStorage.getItem('fg_preroll_last_shown');
+  if (!lastShown) {
+    console.log('[FanGuru] No preroll timestamp found - showing preroll');
+    return true;
+  }
+  const lastShownTime = parseInt(lastShown, 10);
+  if (isNaN(lastShownTime)) {
+    console.log('[FanGuru] Invalid timestamp in storage - clearing and showing preroll');
+    localStorage.removeItem('fg_preroll_last_shown');
+    return true;
+  }
+  const timeSince = Date.now() - lastShownTime;
+  const shouldShow = timeSince > PREROLL_COOLDOWN;
+  console.log('[FanGuru] Time since last preroll:', Math.floor(timeSince/1000/60), 'minutes | Should show:', shouldShow);
+  return shouldShow;
+}
+
+/* ═ Show preroll video ═ */
+function showPreroll(onComplete){
+  if (!panel) {
+    console.error('[FanGuru] Cannot show preroll - panel not initialized');
+    return;
+  }
+  console.log('[FanGuru] Showing preroll video');
+
+  const overlay = document.createElement("div");
+  overlay.id = "preroll-overlay";
+  overlay.innerHTML = `
+    <div class="preroll-content">
+      <div class="preroll-header">
+        <span class="preroll-skip" id="preroll-skip">Überspringen ✕</span>
+      </div>
+      <iframe
+        id="preroll-iframe"
+        src="https://www.youtube.com/embed/${PREROLL_VIDEO}?autoplay=1&modestbranding=1&rel=0"
+        frameborder="0"
+        allow="autoplay; encrypted-media"
+        allowfullscreen>
+      </iframe>
+    </div>
+  `;
+  panel.appendChild(overlay);
+
+  const skip = () => {
+    overlay.remove();
+    localStorage.setItem('fg_preroll_last_shown', Date.now().toString());
+    if (typeof onComplete === 'function') onComplete();
+  };
+
+  overlay.querySelector("#preroll-skip").onclick = skip;
+
+  // Auto-close after video ends (approximate 30 seconds)
+  setTimeout(skip, 30000);
+}
+
 /* ═ פתיחה ═ */
 function openPanel(){
   panel.classList.add("open");
   positionPanel();
+
+  // Check if preroll should be shown (after panel animation)
+  if (shouldShowPreroll()) {
+    setTimeout(() => showPreroll(), 300);
+  }
 }
 
 /* ═ סגירת פאנל ═ */
@@ -166,10 +236,10 @@ function makePanel(){
             </div>
           </div>
           <div class="hero-right">
-            <div class="hero-powered">
+            <a href="https://www.fanguru.ai" target="_blank" class="hero-powered">
               <span>Powered by</span>
               <img class="hero-logo" src="${LOGO_URL}" alt="FanGuru">
-            </div>
+            </a>
           </div>
         </div>
         <span id="cclose" title="Schließen">✕</span>
@@ -180,12 +250,19 @@ function makePanel(){
         <img class="sponsor-img" src="${SPONSOR_IMG}" alt="ZWILLING">
         <div class="sponsor-copy"><b>ZWILLING Motion Töpfe</b> – 15% Rabatt <a href="https://www.zwilling.com/us/zwilling/cookware/" target="_blank" style="color:#fff;text-decoration:underline;">Jetzt kaufen</a></div>
       </div>
+
+      <!-- Mode Selector -->
+      <div id="mode-selector">
+        <button class="mode-btn active" data-mode="chat">💬 Chat</button>
+        <button class="mode-btn" data-mode="voice">🎤 Sprache</button>
+      </div>
     </div>
 
     <div id="cmsgs" class="panel-blur-wrap"></div>
 
     <div id="cinput" class="panel-blur-wrap">
       <input id="chat-input" placeholder="Nachricht schreiben…">
+      <button id="voice-btn" title="Sprachaufnahme">🎤</button>
       <button id="send-btn">Fragen</button>
     </div>
   `;
@@ -196,10 +273,21 @@ function makePanel(){
   panel.querySelector("#cmsgs").innerHTML = "";
 
   panel.querySelector("#send-btn").onclick = send;
+  panel.querySelector("#voice-btn").onclick = toggleVoiceRecording;
   const inputEl = panel.querySelector("#chat-input");
   inputEl.addEventListener("keydown",e=>e.key==="Enter"&&send());
   panel.querySelector("#cclose").onclick = closePanel;
   document.addEventListener("keydown",e=>{ if(e.key==="Escape") closePanel(); });
+
+  // Mode selector event listeners
+  panel.querySelectorAll(".mode-btn").forEach(btn => {
+    btn.onclick = () => {
+      chatMode = btn.dataset.mode;
+      panel.querySelectorAll(".mode-btn").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      console.log('[FanGuru] Mode switched to:', chatMode);
+    };
+  });
 
   render("Willkommen! Ich bin dein KI-Koch-Assistent. Frag mich alles über Rezepte und Kochen!", "in", false);
   positionPanel();
@@ -259,6 +347,200 @@ function showAnim(mode="typing"){
   panel.querySelector("#cmsgs").scrollTop=9e9; return wrap;
 }
 function formatTime(sec){ const m=Math.floor(sec/60), s=Math.floor(sec%60).toString().padStart(2,"0"); return `${m}:${s}`; }
+
+/* ═ Voice Recording (WhatsApp Style) ═ */
+async function toggleVoiceRecording() {
+  if (!isRecording) {
+    // Start recording
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      mediaRecorder = new MediaRecorder(stream);
+      audioChunks = [];
+
+      mediaRecorder.ondataavailable = (event) => {
+        audioChunks.push(event.data);
+      };
+
+      mediaRecorder.onstop = async () => {
+        const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+        await processVoiceInput(audioBlob);
+        stream.getTracks().forEach(track => track.stop());
+      };
+
+      mediaRecorder.start();
+      isRecording = true;
+      recordingStartTime = Date.now();
+      showRecordingIndicator();
+      console.log('[FanGuru] Recording started');
+    } catch (error) {
+      console.error('[FanGuru] Microphone access error:', error);
+      render("⚠️ Mikrofon-Zugriff verweigert", "in", false);
+    }
+  } else {
+    // Stop recording
+    mediaRecorder.stop();
+    isRecording = false;
+    console.log('[FanGuru] Recording stopped');
+  }
+}
+
+function showRecordingIndicator() {
+  const inputArea = panel.querySelector("#cinput");
+  const voiceBtn = panel.querySelector("#voice-btn");
+
+  // Add recording class to input area
+  inputArea.classList.add("recording-active");
+
+  // Create voice visualizer
+  const visualizer = document.createElement("div");
+  visualizer.className = "voice-visualizer";
+  visualizer.innerHTML = `
+    <div class="voice-bar"></div>
+    <div class="voice-bar"></div>
+    <div class="voice-bar"></div>
+    <div class="voice-bar"></div>
+  `;
+
+  // Create timer
+  const timer = document.createElement("div");
+  timer.className = "recording-timer-inline";
+  timer.textContent = "0:00";
+
+  // Insert visualizer and timer before voice button
+  voiceBtn.parentNode.insertBefore(visualizer, voiceBtn);
+  voiceBtn.parentNode.insertBefore(timer, voiceBtn);
+
+  // Update timer
+  const timerInterval = setInterval(() => {
+    if (!isRecording) {
+      clearInterval(timerInterval);
+      return;
+    }
+    const elapsed = Math.floor((Date.now() - recordingStartTime) / 1000);
+    const minutes = Math.floor(elapsed / 60);
+    const seconds = elapsed % 60;
+    timer.textContent = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+  }, 100);
+
+  // Store interval for cleanup
+  inputArea.dataset.timerInterval = timerInterval;
+}
+
+function removeRecordingIndicator() {
+  const inputArea = panel.querySelector("#cinput");
+  if (!inputArea) return;
+
+  // Clear timer interval
+  if (inputArea.dataset.timerInterval) {
+    clearInterval(parseInt(inputArea.dataset.timerInterval));
+    delete inputArea.dataset.timerInterval;
+  }
+
+  // Remove recording class
+  inputArea.classList.remove("recording-active");
+
+  // Remove visualizer and timer
+  const visualizer = panel.querySelector(".voice-visualizer");
+  const timer = panel.querySelector(".recording-timer-inline");
+  if (visualizer) visualizer.remove();
+  if (timer) timer.remove();
+}
+
+function showProcessingIndicator() {
+  const inputArea = panel.querySelector("#cinput");
+  inputArea.classList.add("processing-active");
+}
+
+function removeProcessingIndicator() {
+  const inputArea = panel.querySelector("#cinput");
+  if (inputArea) {
+    inputArea.classList.remove("processing-active");
+  }
+}
+
+async function processVoiceInput(audioBlob) {
+  // Skip if audioChunks was cleared (canceled)
+  if (audioChunks.length === 0) {
+    removeRecordingIndicator();
+    return;
+  }
+
+  // Remove recording indicator but keep processing indicator
+  removeRecordingIndicator();
+  showProcessingIndicator();
+
+  const anim = showAnim("mic");
+
+  try {
+    // Convert blob to base64
+    const reader = new FileReader();
+    reader.readAsDataURL(audioBlob);
+
+    reader.onloadend = async () => {
+      const base64Audio = reader.result;
+
+      // Send to STT API
+      console.log('[FanGuru] Transcribing audio...');
+      const sttResponse = await fetch(API_ENDPOINT.replace('/chat', '/speech-to-text'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ audio: base64Audio })
+      });
+
+      if (!sttResponse.ok) {
+        throw new Error('STT failed');
+      }
+
+      const { text } = await sttResponse.json();
+      console.log('[FanGuru] Transcribed text:', text);
+
+      anim.remove();
+
+      if (!text || text.trim() === '') {
+        removeProcessingIndicator();
+        render("⚠️ Keine Sprache erkannt", "in", false);
+        return;
+      }
+
+      // Show user's transcribed message
+      render(text, "out");
+
+      // Get AI response - use mic animation in voice mode, typing in chat mode
+      const aiAnim = showAnim(chatMode === "voice" ? "mic" : "typing");
+      const aiResponse = await askAI();
+      aiAnim.remove();
+
+      // Render response based on mode
+      if (chatMode === "voice") {
+        // Voice mode: only voice response
+        console.log('[FanGuru] Converting response to speech...');
+        const ttsResponse = await fetch(API_ENDPOINT.replace('/chat', '/text-to-speech'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text: aiResponse })
+        });
+
+        if (!ttsResponse.ok) {
+          throw new Error('TTS failed');
+        }
+
+        const { audio: audioUrl } = await ttsResponse.json();
+        console.log('[FanGuru] Playing voice response');
+        renderVoice(audioUrl);
+        removeProcessingIndicator();
+      } else {
+        // Chat mode: only text response
+        render(aiResponse, "in");
+        removeProcessingIndicator();
+      }
+    };
+  } catch (error) {
+    console.error('[FanGuru] Voice processing error:', error);
+    anim.remove();
+    removeProcessingIndicator();
+    render("⚠️ Sprachverarbeitung fehlgeschlagen", "in", false);
+  }
+}
 
 /* ═ שליחה ═ */
 async function send(){
@@ -382,7 +664,8 @@ const style=document.createElement("style"); style.textContent=`
 .hero-title{ font-weight:900; font-size:15px; }
 .hero-sub{ font-size:11px; opacity:.95; }
 .hero-right{ display:flex; flex-direction:column; align-items:flex-end; }
-.hero-powered{ display:flex; align-items:center; gap:6px; font-size:10px; letter-spacing:.2px; opacity:.95; }
+.hero-powered{ display:flex; align-items:center; gap:6px; font-size:10px; letter-spacing:.2px; opacity:.95; color:#fff; text-decoration:none; cursor:pointer; transition:opacity .2s; }
+.hero-powered:hover{ opacity:1; }
 .hero-logo{ width:40px; height:auto; object-fit:contain; }
 #cclose{ position:absolute; top:8px; left:10px; color:#fff; cursor:pointer; font-weight:800; font-size:18px; }
 
@@ -396,6 +679,17 @@ const style=document.createElement("style"); style.textContent=`
   box-shadow:0 4px 10px rgba(0,0,0,.25);
 }
 #sponsor .sponsor-copy{ font-size:12px; }
+
+/* Mode Selector */
+#mode-selector{
+  display:flex; gap:8px; padding:10px 12px; background:#f6f8fb; border-bottom:1px solid #e6eaf0;
+}
+.mode-btn{
+  flex:1; border:none; background:#fff; color:#41556f; padding:10px 16px; border-radius:10px;
+  font-size:14px; font-weight:600; cursor:pointer; transition:all .2s; border:2px solid transparent;
+}
+.mode-btn:hover{ background:#eef2f7; }
+.mode-btn.active{ background:#0b6cff; color:#fff; border-color:#0b6cff; box-shadow:0 4px 12px rgba(11,108,255,.25); }
 
 /* Messages */
 #cmsgs{ flex:1; overflow-y:auto; padding:12px; display:flex; flex-direction:column; gap:8px; background:#f6f8fb; }
@@ -425,13 +719,73 @@ const style=document.createElement("style"); style.textContent=`
 /* Input */
 #cinput{ display:flex; gap:8px; padding:10px; border-top:1px solid #e6eaf0; background:#fff; align-items:center; }
 #cinput #chat-input{ flex:1; border:1px solid #cfd8e3; border-radius:12px; padding:10px 12px; font-size:14px; direction:ltr; text-align:left; }
+#cinput #voice-btn{ border:none; background:#0b6cff; color:#fff; padding:10px 12px; border-radius:12px; cursor:pointer; font-size:18px; transition:all .2s; }
+#cinput #voice-btn:hover{ background:#0957cc; transform:scale(1.05); }
+#cinput.recording-active #voice-btn{ background:#ff2d55; animation:pulse-mic 1.5s ease-in-out infinite; }
+#cinput.processing-active #voice-btn{ background:#ff9500; animation:pulse-mic 1.5s ease-in-out infinite; }
+#cinput.recording-active #chat-input, #cinput.recording-active #send-btn{ display:none; }
+#cinput.processing-active #chat-input, #cinput.processing-active #send-btn{ display:none; }
 #cinput #send-btn{ border:none; background:#0b6cff; color:#fff; padding:10px 18px; border-radius:12px; cursor:pointer; font-weight:700; }
 #cinput #send-btn:hover{ background:#0957cc; }
+
+/* Voice Visualizer (WhatsApp style) */
+.voice-visualizer{
+  display:flex; align-items:center; gap:3px; height:24px;
+}
+.voice-bar{
+  width:3px; background:#ff2d55; border-radius:2px; height:100%;
+  animation:voice-wave 1.2s ease-in-out infinite;
+}
+.voice-bar:nth-child(1){ animation-delay:0s; }
+.voice-bar:nth-child(2){ animation-delay:0.2s; }
+.voice-bar:nth-child(3){ animation-delay:0.4s; }
+.voice-bar:nth-child(4){ animation-delay:0.6s; }
+@keyframes voice-wave{
+  0%,100%{ height:6px; }
+  50%{ height:24px; }
+}
+
+/* Recording Timer Inline */
+.recording-timer-inline{
+  font-size:14px; font-weight:700; color:#ff2d55; font-variant-numeric:tabular-nums;
+  min-width:45px; text-align:right;
+}
+
+/* Mic Button Pulse */
+@keyframes pulse-mic{
+  0%,100%{ transform:scale(1); }
+  50%{ transform:scale(1.1); }
+}
+
+/* Preroll overlay */
+#preroll-overlay{
+  position:absolute; inset:0; background:rgba(0,0,0,.95); z-index:100000;
+  display:flex; align-items:center; justify-content:center; border-radius:18px;
+}
+.preroll-content{
+  position:relative; width:92%; aspect-ratio:16/9; background:#000;
+  border-radius:12px; overflow:hidden; box-shadow:0 20px 60px rgba(0,0,0,.6);
+}
+.preroll-header{
+  position:absolute; top:0; left:0; right:0; z-index:10; padding:16px;
+  background:linear-gradient(180deg, rgba(0,0,0,.7) 0%, rgba(0,0,0,0) 100%);
+  display:flex; justify-content:flex-end;
+}
+.preroll-skip{
+  color:#fff; cursor:pointer; font-weight:700; font-size:14px; padding:8px 16px;
+  background:rgba(255,255,255,.15); border-radius:8px; transition:background .2s;
+}
+.preroll-skip:hover{ background:rgba(255,255,255,.25); }
+#preroll-iframe{
+  width:100%; height:100%; border:none;
+}
+
 
 /* מובייל */
 @media (max-width: 640px){
   #fg-launcher .fg-cta{ display:none; }
-  #cpanel{ width:94vw; height:70vh; }
+  #cpanel{ width:94vw; height:80vh; max-height:80vh; left:3vw !important; bottom:calc(88px + 3vh) !important; }
+  .preroll-content{ width:95%; }
 }
 `; document.head.appendChild(style);
 
