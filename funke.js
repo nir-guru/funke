@@ -50,6 +50,11 @@ let recordingStartTime = 0;
 const VOICE_AGENT_PATH = "/rezept/kraeuter-pasta-chorizo-crunch";
 const isVoiceAgentPage = window.location.pathname.includes(VOICE_AGENT_PATH);
 
+/* ═ Login Credentials ═ */
+const VALID_USERNAME = "fanguru";
+const VALID_PASSWORD = "fanguru1025";
+const AUTH_KEY = "fg_authenticated";
+
 /* ═ Extract Page Content for Context ═ */
 function getPageContext() {
   const context = [];
@@ -103,12 +108,68 @@ function getPageContext() {
   return context.join('\n\n');
 }
 
-// Extract context when script loads
-pageContext = getPageContext();
 
+
+/* ═ Login Check ═ */
+function checkAuth() {
+  return localStorage.getItem(AUTH_KEY) === "true";
+}
+
+function showLoginScreen() {
+  const loginOverlay = document.createElement("div");
+  loginOverlay.id = "fg-login-overlay";
+  loginOverlay.innerHTML = `
+    <div class="fg-login-box">
+      <img class="fg-login-logo" src="${LOGO_URL}" alt="FanGuru">
+      <h2 class="fg-login-title">Willkommen bei FanGuru</h2>
+      <p class="fg-login-subtitle">Bitte melden Sie sich an</p>
+      <div class="fg-login-form">
+        <input type="text" id="fg-username" placeholder="Benutzername" autocomplete="username">
+        <input type="password" id="fg-password" placeholder="Passwort" autocomplete="current-password">
+        <div id="fg-login-error" class="fg-login-error"></div>
+        <button id="fg-login-btn">Anmelden</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(loginOverlay);
+
+  const usernameInput = loginOverlay.querySelector("#fg-username");
+  const passwordInput = loginOverlay.querySelector("#fg-password");
+  const loginBtn = loginOverlay.querySelector("#fg-login-btn");
+  const errorDiv = loginOverlay.querySelector("#fg-login-error");
+
+  const attemptLogin = () => {
+    const username = usernameInput.value.trim();
+    const password = passwordInput.value;
+
+    if (username === VALID_USERNAME && password === VALID_PASSWORD) {
+      // Store only authentication status, not credentials
+      localStorage.setItem(AUTH_KEY, "true");
+      loginOverlay.remove();
+      initApp();
+    } else {
+      errorDiv.textContent = "Ungültiger Benutzername oder Passwort";
+      usernameInput.value = "";
+      passwordInput.value = "";
+      usernameInput.focus();
+    }
+  };
+
+  loginBtn.onclick = attemptLogin;
+  usernameInput.addEventListener("keydown", e => e.key === "Enter" && passwordInput.focus());
+  passwordInput.addEventListener("keydown", e => e.key === "Enter" && attemptLogin());
+
+  setTimeout(() => usernameInput.focus(), 100);
+}
+
+function initApp() {
+  makeLauncher();
+  // Extract context when script loads
+  pageContext = getPageContext();
+}
 
 /* ═ לאנצ'ר + TOGGLE + גרירה ═ */
-(function makeLauncher(){
+function makeLauncher(){
   launcher = document.createElement("div");
   launcher.id = "fg-launcher";
   launcher.innerHTML = `
@@ -171,7 +232,7 @@ pageContext = getPageContext();
 
   makeDraggable(launcher, "fg_launcher_pos", positionPanel);
   window.addEventListener("resize", ()=>{ if(panel) positionPanel(); }, {passive:true});
-})();
+}
 
 /* ═ מיקום הפאנל צמוד לבועה ═ */
 function positionPanel(){
@@ -515,8 +576,8 @@ async function processVoiceInput(audioBlob) {
   removeRecordingIndicator();
   showProcessingIndicator();
 
-  // Keep mic animation visible throughout entire process
-  const anim = showAnim("mic");
+  // Show animation based on current mode: typing for chat mode, mic for voice mode
+  const anim = showAnim(chatMode === "voice" ? "mic" : "typing");
 
   try {
     // Convert blob to base64
@@ -551,7 +612,7 @@ async function processVoiceInput(audioBlob) {
       // Show user's transcribed message
       render(text, "out");
 
-      // Get AI response - keep mic animation visible
+      // Get AI response - keep animation visible
       const aiResponse = await askAI();
 
       // Render response based on mode
@@ -610,11 +671,32 @@ async function send(){
     return;
   }
 
-  const anim=showAnim("typing");
+  // Show animation based on current mode
+  const anim=showAnim(chatMode === "voice" ? "mic" : "typing");
   try{
     const res=await askAI();
     anim.remove();
-    render(res,"in");
+
+    // Render response based on mode
+    if (chatMode === "voice") {
+      // Voice mode: convert to speech
+      console.log('[FanGuru] Converting response to speech...');
+      const ttsResponse = await fetch(API_ENDPOINT.replace('/chat', '/text-to-speech'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: res })
+      });
+
+      if (ttsResponse.ok) {
+        const { audio: audioUrl } = await ttsResponse.json();
+        renderVoice(audioUrl);
+      } else {
+        render(res, "in");
+      }
+    } else {
+      // Chat mode: show text
+      render(res,"in");
+    }
   }catch(e){
     anim.remove();
     render("⚠️ Fehler", "in");
@@ -831,6 +913,47 @@ const style=document.createElement("style"); style.textContent=`
 }
 
 
+/* Login Screen */
+#fg-login-overlay{
+  position:fixed; inset:0; background:linear-gradient(135deg, #0b2343 0%, #1a3a5c 100%);
+  z-index:999999; display:flex; align-items:center; justify-content:center;
+  font-family: 'Heebo', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+.fg-login-box{
+  background:#fff; padding:40px; border-radius:20px; box-shadow:0 20px 60px rgba(0,0,0,0.3);
+  width:90%; max-width:400px; text-align:center;
+}
+.fg-login-logo{
+  width:80px; height:auto; margin:0 auto 20px;
+}
+.fg-login-title{
+  font-size:24px; font-weight:800; color:#0b2343; margin:0 0 8px;
+}
+.fg-login-subtitle{
+  font-size:14px; color:#41556f; margin:0 0 30px;
+}
+.fg-login-form{
+  display:flex; flex-direction:column; gap:12px;
+}
+.fg-login-form input{
+  border:1px solid #cfd8e3; border-radius:12px; padding:14px 16px;
+  font-size:15px; font-family:inherit;
+}
+.fg-login-form input:focus{
+  outline:none; border-color:#0b6cff; box-shadow:0 0 0 3px rgba(11,108,255,0.1);
+}
+.fg-login-error{
+  color:#ff2d55; font-size:13px; min-height:20px; font-weight:600;
+}
+#fg-login-btn{
+  background:#0b6cff; color:#fff; border:none; border-radius:12px;
+  padding:14px 24px; font-size:16px; font-weight:700; cursor:pointer;
+  transition:all 0.2s; font-family:inherit;
+}
+#fg-login-btn:hover{
+  background:#0957cc; transform:translateY(-1px); box-shadow:0 4px 12px rgba(11,108,255,0.3);
+}
+
 /* מובייל */
 @media (max-width: 640px){
   #fg-launcher .fg-cta{ display:none; }
@@ -844,7 +967,8 @@ const style=document.createElement("style"); style.textContent=`
     border-radius:0 !important;
   }
   #cclose{
-    top:12px;
+    top:auto;
+    bottom:calc(100vh - 80px);
     left:12px;
     z-index:10;
     background:rgba(0,0,0,0.5);
@@ -857,6 +981,7 @@ const style=document.createElement("style"); style.textContent=`
     font-size:20px;
   }
   .preroll-content{ width:95%; }
+  .fg-login-box{ padding:30px 25px; }
 }
 `; document.head.appendChild(style);
 
@@ -1020,5 +1145,12 @@ function openVoiceAgent() {
 /* הסרת Glassix אם קיים */
 new MutationObserver(()=>{const g=document.querySelector('#glassix-widget-launcher-closed-wrapper');if(g)g.remove();})
 .observe(document.body,{childList:true,subtree:true});
+
+/* ═ Start Application ═ */
+if (checkAuth()) {
+  initApp();
+} else {
+  showLoginScreen();
+}
 
 
