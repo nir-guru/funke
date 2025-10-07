@@ -230,7 +230,10 @@ function makeLauncher(){
   cta.addEventListener("touchstart", onTouchStart, { passive: true });
   cta.addEventListener("touchend", onTouchEnd, { passive: false });
 
-  makeDraggable(launcher, "fg_launcher_pos", positionPanel);
+  // Enable dragging only on desktop
+  if (window.innerWidth > 640) {
+    makeDraggable(launcher, "fg_launcher_pos", positionPanel);
+  }
   window.addEventListener("resize", ()=>{ if(panel) positionPanel(); }, {passive:true});
 }
 
@@ -736,7 +739,7 @@ async function askAI(){
     },
     body: JSON.stringify({
       messages: msgs,
-      max_tokens: 120
+      max_tokens: 500
     })
   });
 
@@ -768,7 +771,10 @@ const style=document.createElement("style"); style.textContent=`
   animation:fg-float 3.5s ease-in-out infinite;
   background:#111;
 }
-#fg-launcher .fg-avatar{ width:100%; height:100%; object-fit:cover; aspect-ratio:1/1; display:block; }
+#fg-launcher .fg-avatar{
+  width:100%; height:100%; object-fit:cover; aspect-ratio:1/1; display:block;
+  pointer-events:none; user-select:none; -webkit-user-drag:none;
+}
 #fg-launcher .fg-ring{
   position:absolute; inset:-6px; border-radius:50%;
   box-shadow:0 0 0 6px rgba(0,120,255,.18), 0 0 30px rgba(0,120,255,.35), 0 0 60px rgba(0,120,255,.25);
@@ -782,7 +788,10 @@ const style=document.createElement("style"); style.textContent=`
   display:flex; align-items:center; gap:10px; background:#ffffff; border:1px solid #dfe6f1;
   padding:10px 12px; border-radius:999px; cursor:pointer; box-shadow:0 8px 24px rgba(0,0,0,.16);
 }
-#fg-launcher .fg-logo{ width:26px; height:26px; object-fit:contain; }
+#fg-launcher .fg-logo{
+  width:26px; height:26px; object-fit:contain;
+  pointer-events:none; user-select:none; -webkit-user-drag:none;
+}
 #fg-launcher .fg-cta-text{ display:flex; flex-direction:column; line-height:1.1; }
 #fg-launcher .fg-cta-title{ font-size:15px; font-weight:800; color:#0b2343; letter-spacing:.1px; }
 #fg-launcher .fg-cta-sub{ font-size:12px; color:#41556f; }
@@ -1080,20 +1089,18 @@ function makeDraggable(el, key, onStop){
   }
   let sX=0, sY=0, bL=0, bB=0, dragging=false, wasMoved=false;
   const onDown = (e)=>{
-    // Don't interfere with bubble/cta clicks
-    if(e.target.closest('.fg-bubble') || e.target.closest('.fg-cta')) return;
-
     const t = e.touches ? e.touches[0] : e;
     dragging = true; wasMoved = false; sX = t.clientX; sY = t.clientY;
     const cs = getComputedStyle(el);
     bL = parseFloat(cs.left); bB = parseFloat(cs.bottom);
+    el.style.cursor = 'grabbing';
   };
   const onMove = (e)=>{
     if(!dragging) return;
     const t = e.touches ? e.touches[0] : e;
     const dX = t.clientX - sX; const dY = t.clientY - sY;
-    // Only start dragging if moved more than 10px (prevent accidental drag on tap)
-    if(Math.abs(dX) > 10 || Math.abs(dY) > 10){
+    // Only start dragging if moved more than 5px (prevent accidental drag on click)
+    if(Math.abs(dX) > 5 || Math.abs(dY) > 5){
       wasMoved = true;
       e.preventDefault();
       el.style.left   = Math.max(8, bL + dX) + "px";
@@ -1103,17 +1110,18 @@ function makeDraggable(el, key, onStop){
   const onUp = ()=>{
     if(!dragging) return;
     dragging=false;
+    el.style.cursor = 'grab';
     if(wasMoved){
       localStorage.setItem(key, JSON.stringify({ left: el.style.left, bottom: el.style.bottom }));
       if (typeof onStop === "function") onStop();
     }
   };
   el.addEventListener("mousedown", onDown);
-  el.addEventListener("touchstart", onDown, {passive:true});
   window.addEventListener("mousemove", onMove, {passive:false});
-  window.addEventListener("touchmove", onMove, {passive:false});
   window.addEventListener("mouseup", onUp);
-  window.addEventListener("touchend", onUp);
+
+  // Set initial cursor
+  el.style.cursor = 'grab';
 }
 
 /* ═ שליחה ═ */
