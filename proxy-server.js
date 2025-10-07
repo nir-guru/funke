@@ -70,8 +70,8 @@ const proxyMiddleware = createProxyMiddleware({
   selfHandleResponse: true,
 
   onProxyReq: (proxyReq, req, res) => {
-    // Remove accept-encoding to prevent compression issues
-    proxyReq.removeHeader('accept-encoding');
+    // Keep accept-encoding for better performance, we handle decompression when needed
+    // proxyReq.removeHeader('accept-encoding');
     // Add headers to make it look like a real browser
     proxyReq.setHeader('Accept-Language', 'he-IL,he;q=0.9,en-US;q=0.8,en;q=0.7');
   },
@@ -80,12 +80,10 @@ const proxyMiddleware = createProxyMiddleware({
     const contentType = proxyRes.headers['content-type'] || '';
     const encoding = proxyRes.headers['content-encoding'];
 
-    // Modify HTML, CSS, and JavaScript responses to rewrite URLs
+    // Modify HTML (for widget injection) and CSS (for URL rewriting)
+    // Skip JS processing for better performance
     const shouldModify = contentType.includes('text/html') ||
-                         contentType.includes('text/css') ||
-                         contentType.includes('application/javascript') ||
-                         contentType.includes('application/x-javascript') ||
-                         contentType.includes('text/javascript');
+                         contentType.includes('text/css');
 
     if (shouldModify) {
       let body = Buffer.from('');
