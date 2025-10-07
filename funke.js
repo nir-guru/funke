@@ -913,6 +913,28 @@ const style=document.createElement("style"); style.textContent=`
 }
 
 
+/* Voice Agent Overlay (Mobile) */
+#fg-voice-agent-overlay{
+  position:fixed; inset:0; background:rgba(0,0,0,0.95); backdrop-filter:blur(10px);
+  z-index:999998; display:flex; align-items:center; justify-content:center;
+}
+.fg-voice-agent-content{
+  position:relative; width:100%; height:100%; display:flex; align-items:center; justify-content:center;
+}
+#fg-voice-agent-widget-container{
+  width:100%; height:100%; display:flex; align-items:center; justify-content:center;
+}
+.fg-voice-agent-close{
+  position:absolute; top:20px; right:20px; z-index:10;
+  background:rgba(255,255,255,0.2); color:#fff; border:none;
+  width:44px; height:44px; border-radius:50%; font-size:24px;
+  cursor:pointer; display:flex; align-items:center; justify-content:center;
+  transition:all 0.2s;
+}
+.fg-voice-agent-close:hover{
+  background:rgba(255,255,255,0.3); transform:scale(1.1);
+}
+
 /* Login Screen */
 #fg-login-overlay{
   position:fixed; inset:0; background:linear-gradient(135deg, #0b2343 0%, #1a3a5c 100%);
@@ -967,18 +989,18 @@ const style=document.createElement("style"); style.textContent=`
     border-radius:0 !important;
   }
   #cclose{
-    top:auto;
-    bottom:calc(100vh - 80px);
-    left:12px;
-    z-index:10;
-    background:rgba(0,0,0,0.5);
-    width:32px;
-    height:32px;
+    position:fixed !important;
+    top:20px !important;
+    left:20px !important;
+    z-index:100001 !important;
+    background:rgba(0,0,0,0.7) !important;
+    width:40px !important;
+    height:40px !important;
     border-radius:50%;
-    display:flex;
+    display:flex !important;
     align-items:center;
     justify-content:center;
-    font-size:20px;
+    font-size:22px !important;
   }
   .preroll-content{ width:95%; }
   .fg-login-box{ padding:30px 25px; }
@@ -1106,39 +1128,103 @@ async function askAI(){
 
 /* Voice Agent Functions */
 function openVoiceAgent() {
-  // Check if widget is already loaded
-  if (!document.querySelector('elevenlabs-convai')) {
-    // Create the widget element
-    const widget = document.createElement('elevenlabs-convai');
-    widget.setAttribute('agent-id', 'agent_3901k6wsg096e5as4db3jgxty41j');
-    document.body.appendChild(widget);
+  // Create fullscreen overlay for mobile
+  const isMobile = window.innerWidth <= 640;
 
-    // Load the script if not already loaded
-    if (!document.querySelector('script[src*="elevenlabs"]')) {
-      const script = document.createElement('script');
-      script.src = 'https://unpkg.com/@elevenlabs/convai-widget-embed';
-      script.async = true;
-      script.type = 'text/javascript';
-      document.body.appendChild(script);
+  if (isMobile) {
+    // Create overlay
+    const overlay = document.createElement('div');
+    overlay.id = 'fg-voice-agent-overlay';
+    overlay.innerHTML = `
+      <div class="fg-voice-agent-content">
+        <button id="fg-voice-agent-close" class="fg-voice-agent-close">✕</button>
+        <div id="fg-voice-agent-widget-container"></div>
+      </div>
+    `;
+    document.body.appendChild(overlay);
 
-      // Wait for script to load then trigger widget
-      script.onload = () => {
+    const closeBtn = overlay.querySelector('#fg-voice-agent-close');
+    const container = overlay.querySelector('#fg-voice-agent-widget-container');
+
+    closeBtn.onclick = () => {
+      overlay.remove();
+    };
+
+    // Check if widget is already loaded
+    let widget = document.querySelector('elevenlabs-convai');
+
+    if (!widget) {
+      // Create the widget element
+      widget = document.createElement('elevenlabs-convai');
+      widget.setAttribute('agent-id', 'agent_3901k6wsg096e5as4db3jgxty41j');
+      container.appendChild(widget);
+
+      // Load the script if not already loaded
+      if (!document.querySelector('script[src*="elevenlabs"]')) {
+        const script = document.createElement('script');
+        script.src = 'https://unpkg.com/@elevenlabs/convai-widget-embed';
+        script.async = true;
+        script.type = 'text/javascript';
+        document.body.appendChild(script);
+
+        // Wait for script to load then trigger widget
+        script.onload = () => {
+          setTimeout(() => {
+            const btn = widget?.shadowRoot?.querySelector('button');
+            if (btn) btn.click();
+          }, 500);
+        };
+      } else {
+        // Script already loaded, just trigger the widget
         setTimeout(() => {
-          const btn = document.querySelector('elevenlabs-convai')?.shadowRoot?.querySelector('button');
+          const btn = widget?.shadowRoot?.querySelector('button');
           if (btn) btn.click();
-        }, 500);
-      };
+        }, 300);
+      }
     } else {
-      // Script already loaded, just trigger the widget
+      // Move existing widget to container
+      container.appendChild(widget);
       setTimeout(() => {
-        const btn = document.querySelector('elevenlabs-convai')?.shadowRoot?.querySelector('button');
+        const btn = widget?.shadowRoot?.querySelector('button');
         if (btn) btn.click();
       }, 300);
     }
   } else {
-    // Widget exists, just click it
-    const btn = document.querySelector('elevenlabs-convai')?.shadowRoot?.querySelector('button');
-    if (btn) btn.click();
+    // Desktop: original behavior
+    // Check if widget is already loaded
+    if (!document.querySelector('elevenlabs-convai')) {
+      // Create the widget element
+      const widget = document.createElement('elevenlabs-convai');
+      widget.setAttribute('agent-id', 'agent_3901k6wsg096e5as4db3jgxty41j');
+      document.body.appendChild(widget);
+
+      // Load the script if not already loaded
+      if (!document.querySelector('script[src*="elevenlabs"]')) {
+        const script = document.createElement('script');
+        script.src = 'https://unpkg.com/@elevenlabs/convai-widget-embed';
+        script.async = true;
+        script.type = 'text/javascript';
+        document.body.appendChild(script);
+
+        // Wait for script to load then trigger widget
+        script.onload = () => {
+          setTimeout(() => {
+            const btn = document.querySelector('elevenlabs-convai')?.shadowRoot?.querySelector('button');
+            if (btn) btn.click();
+          }, 500);
+        };
+      } else {
+        // Script already loaded, just trigger the widget
+        setTimeout(() => {
+          const btn = document.querySelector('elevenlabs-convai')?.shadowRoot?.querySelector('button');
+          if (btn) btn.click();
+        }, 300);
+      }
+    } else {
+      // Widget exists, just click it
+      const btn = document.querySelector('elevenlabs-convai')?.shadowRoot?.querySelector('button');
+      if (btn) btn.click();
+    }
   }
 }
 
