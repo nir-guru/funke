@@ -124,13 +124,48 @@ pageContext = getPageContext();
   `;
   document.body.appendChild(launcher);
 
-  const onLauncherClick = ()=>{
+  let touchStartTime = 0;
+  let touchStartPos = { x: 0, y: 0 };
+
+  const onLauncherClick = (e)=>{
     if (!panel) makePanel();
     if (panel.classList.contains("open")) closePanel();
     else openPanel();
   };
-  launcher.querySelector(".fg-bubble").onclick = onLauncherClick;
-  launcher.querySelector(".fg-cta").onclick    = onLauncherClick;
+
+  const bubble = launcher.querySelector(".fg-bubble");
+  const cta = launcher.querySelector(".fg-cta");
+
+  // Desktop click
+  bubble.addEventListener("click", onLauncherClick);
+  cta.addEventListener("click", onLauncherClick);
+
+  // Mobile touch handling
+  const onTouchStart = (e) => {
+    touchStartTime = Date.now();
+    const touch = e.touches[0];
+    touchStartPos = { x: touch.clientX, y: touch.clientY };
+  };
+
+  const onTouchEnd = (e) => {
+    const touchDuration = Date.now() - touchStartTime;
+    const touch = e.changedTouches[0];
+    const moveDistance = Math.sqrt(
+      Math.pow(touch.clientX - touchStartPos.x, 2) +
+      Math.pow(touch.clientY - touchStartPos.y, 2)
+    );
+
+    if (touchDuration < 500 && moveDistance < 10) {
+      e.preventDefault();
+      e.stopPropagation();
+      onLauncherClick(e);
+    }
+  };
+
+  bubble.addEventListener("touchstart", onTouchStart, { passive: true });
+  bubble.addEventListener("touchend", onTouchEnd, { passive: false });
+  cta.addEventListener("touchstart", onTouchStart, { passive: true });
+  cta.addEventListener("touchend", onTouchEnd, { passive: false });
 
   makeDraggable(launcher, "fg_launcher_pos", positionPanel);
   window.addEventListener("resize", ()=>{ if(panel) positionPanel(); }, {passive:true});
@@ -600,7 +635,7 @@ const style=document.createElement("style"); style.textContent=`
 /* ─ Launcher ─ */
 #fg-launcher{
   position:fixed; left:2.2vw; bottom:3.2vh; display:flex; align-items:center; gap:12px; z-index: 99998;
-  user-select:none; -webkit-user-drag:none; touch-action:none;
+  user-select:none; -webkit-user-drag:none;
 }
 #fg-launcher .fg-bubble{
   position:relative; width:88px; height:88px; border-radius:50%; overflow:hidden; cursor:pointer;
@@ -784,7 +819,15 @@ const style=document.createElement("style"); style.textContent=`
 /* מובייל */
 @media (max-width: 640px){
   #fg-launcher .fg-cta{ display:none; }
-  #cpanel{ width:94vw; height:80vh; max-height:80vh; left:3vw !important; bottom:calc(88px + 3vh) !important; }
+  #fg-launcher .fg-bubble{ width:60px; height:60px; }
+  #cpanel{
+    width:100vw !important;
+    height:100vh !important;
+    max-height:100vh !important;
+    left:0 !important;
+    bottom:0 !important;
+    border-radius:0 !important;
+  }
   .preroll-content{ width:95%; }
 }
 `; document.head.appendChild(style);
@@ -799,29 +842,38 @@ function makeDraggable(el, key, onStop){
       if (pos.bottom) el.style.bottom = pos.bottom;
     } catch {}
   }
-  let sX=0, sY=0, bL=0, bB=0, dragging=false;
+  let sX=0, sY=0, bL=0, bB=0, dragging=false, wasMoved=false;
   const onDown = (e)=>{
+    // Don't interfere with bubble/cta clicks
+    if(e.target.closest('.fg-bubble') || e.target.closest('.fg-cta')) return;
+
     const t = e.touches ? e.touches[0] : e;
-    dragging = true; sX = t.clientX; sY = t.clientY;
+    dragging = true; wasMoved = false; sX = t.clientX; sY = t.clientY;
     const cs = getComputedStyle(el);
     bL = parseFloat(cs.left); bB = parseFloat(cs.bottom);
-    e.preventDefault();
   };
   const onMove = (e)=>{
     if(!dragging) return;
     const t = e.touches ? e.touches[0] : e;
     const dX = t.clientX - sX; const dY = t.clientY - sY;
-    el.style.left   = Math.max(8, bL + dX) + "px";
-    el.style.bottom = Math.max(8, bB - dY) + "px";
+    // Only start dragging if moved more than 10px (prevent accidental drag on tap)
+    if(Math.abs(dX) > 10 || Math.abs(dY) > 10){
+      wasMoved = true;
+      e.preventDefault();
+      el.style.left   = Math.max(8, bL + dX) + "px";
+      el.style.bottom = Math.max(8, bB - dY) + "px";
+    }
   };
   const onUp = ()=>{
     if(!dragging) return;
     dragging=false;
-    localStorage.setItem(key, JSON.stringify({ left: el.style.left, bottom: el.style.bottom }));
-    if (typeof onStop === "function") onStop();
+    if(wasMoved){
+      localStorage.setItem(key, JSON.stringify({ left: el.style.left, bottom: el.style.bottom }));
+      if (typeof onStop === "function") onStop();
+    }
   };
   el.addEventListener("mousedown", onDown);
-  el.addEventListener("touchstart", onDown, {passive:false});
+  el.addEventListener("touchstart", onDown, {passive:true});
   window.addEventListener("mousemove", onMove, {passive:false});
   window.addEventListener("touchmove", onMove, {passive:false});
   window.addEventListener("mouseup", onUp);
