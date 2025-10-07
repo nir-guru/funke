@@ -672,49 +672,79 @@ async function send(){
   }
 
   // Show animation based on current mode
+  console.log('[FanGuru] Current chat mode:', chatMode);
   const anim=showAnim(chatMode === "voice" ? "mic" : "typing");
   try{
     const res=await askAI();
     anim.remove();
 
     // Render response based on mode
+    console.log('[FanGuru] Rendering response in mode:', chatMode);
     if (chatMode === "voice") {
       // Voice mode: convert to speech
-      console.log('[FanGuru] Converting response to speech...');
+      console.log('[FanGuru] Converting response to speech...', res);
       const ttsResponse = await fetch(API_ENDPOINT.replace('/chat', '/text-to-speech'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text: res })
       });
 
+      console.log('[FanGuru] TTS response status:', ttsResponse.status);
+
       if (ttsResponse.ok) {
         const { audio: audioUrl } = await ttsResponse.json();
+        console.log('[FanGuru] Got audio URL:', audioUrl);
         renderVoice(audioUrl);
       } else {
+        console.log('[FanGuru] TTS failed, showing text instead');
         render(res, "in");
       }
     } else {
       // Chat mode: show text
+      console.log('[FanGuru] Chat mode - showing text');
       render(res,"in");
     }
   }catch(e){
     anim.remove();
+    console.error('[FanGuru] Send error:', e);
     render("⚠️ Fehler", "in");
   }
 }
 
 async function askAI(){
+  // Build system message with page context
+  let systemMessage = Pini.sys;
+  if (pageContext) {
+    systemMessage += `\n\nAktueller Seitenkontext:\n${pageContext}\n\nVerwende diese Seiteninformationen, um relevante Antworten über das Rezept oder den Inhalt zu geben, den der Benutzer gerade ansieht.`;
+  }
+
   const msgs = [
-    { role:"system", content: Pini.sys },
-    ...hist.filter(m => !String(m.content).startsWith("[AUDIO]"))
+    { role: "system", content: systemMessage },
+    ...hist
+      .filter(m => !String(m.content).startsWith("[AUDIO]"))
+      .map(m => ({
+        role: m.role,
+        content: String(m.content)
+      }))
   ];
 
-  const r = await fetch("https://api.openai.com/v1/responses",{
-    method:"POST",
-    headers:{ "Content-Type":"application/json", "Authorization":`Bearer ${OPENAI_KEY}` },
-    body:JSON.stringify({ model: MODEL, max_output_tokens:120, messages: msgs }) // בלי temperature
+  // Use the server endpoint instead of calling OpenAI directly
+  const r = await fetch(API_ENDPOINT, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      messages: msgs,
+      max_tokens: 120
+    })
   });
-  if(!r.ok) throw new Error("bad response");
+
+  if (!r.ok) {
+    const errText = await r.text().catch(()=> "");
+    throw new Error(`API error ${r.status}: ${errText}`);
+  }
+
   const d = await r.json();
   return d.choices?.[0]?.message?.content?.trim() || "Keine Antwort.";
 }
@@ -990,8 +1020,27 @@ const style=document.createElement("style"); style.textContent=`
 
 /* מובייל */
 @media (max-width: 640px){
-  #fg-launcher .fg-cta{ display:none; }
-  #fg-launcher .fg-bubble{ width:80px; height:80px; }
+  #fg-launcher{ flex-direction:column; gap:8px; align-items:flex-start; }
+  #fg-launcher .fg-cta{
+    display:flex !important;
+    background:rgba(11,108,255,0.95);
+    border:none;
+    box-shadow:0 4px 16px rgba(11,108,255,0.4);
+    padding:8px 14px;
+  }
+  #fg-launcher .fg-cta-text{ color:#fff; }
+  #fg-launcher .fg-cta-title{ color:#fff; font-size:14px; }
+  #fg-launcher .fg-cta-sub{ color:rgba(255,255,255,0.9); font-size:11px; }
+  #fg-launcher .fg-logo{ filter:brightness(0) invert(1); }
+  #fg-launcher .fg-bubble{
+    width:70px;
+    height:70px;
+    box-shadow:0 8px 24px rgba(0,0,0,0.35), 0 0 0 4px rgba(11,108,255,0.3);
+    border:3px solid #fff;
+  }
+  #fg-launcher .fg-ring{
+    box-shadow:0 0 0 4px rgba(11,108,255,0.25), 0 0 20px rgba(11,108,255,0.4), 0 0 40px rgba(11,108,255,0.3);
+  }
   #cpanel{
     width:100vw !important;
     height:100vh !important;
@@ -1068,74 +1117,6 @@ function makeDraggable(el, key, onStop){
 }
 
 /* ═ שליחה ═ */
-async function send(){
-  const inp=panel.querySelector("#chat-input"); const user=inp.value.trim(); if(!user) return;
-  render(user,"out"); inp.value="";
-
-  // טריגרים גמישים
-  const qa = Pini.qa.find(q=> q.r.test(user));
-  if(qa){
-    const anim=showAnim(qa.type==="audio"||qa.type==="combo"?"mic":"typing");
-    const delay=qa.type==="audio"?3000:(qa.type==="combo"?1500:1200);
-    setTimeout(()=>{
-      anim.remove();
-      if(qa.type==="audio"){ renderVoice(qa.content); }
-      else if(qa.type==="combo"){
-        render(qa.text,"in",true);
-        setTimeout(()=>renderVoice(qa.audio,true),1100);
-      } else { render(qa.content,"in",true); }
-    },delay);
-    return;
-  }
-
-  const anim=showAnim("typing");
-  try{
-    const res=await askAI();
-    anim.remove();
-    render(res,"in");
-  }catch(e){
-    anim.remove();
-    render("⚠️ Fehler", "in");
-  }
-}
-
-async function askAI(){
-  // Build system message with page context
-  let systemMessage = Pini.sys;
-  if (pageContext) {
-    systemMessage += `\n\nAktueller Seitenkontext:\n${pageContext}\n\nVerwende diese Seiteninformationen, um relevante Antworten über das Rezept oder den Inhalt zu geben, den der Benutzer gerade ansieht.`;
-  }
-
-  const msgs = [
-    { role: "system", content: systemMessage },
-    ...hist
-      .filter(m => !String(m.content).startsWith("[AUDIO]"))
-      .map(m => ({
-        role: m.role,                 // "user" | "assistant"
-        content: String(m.content)
-      }))
-  ];
-
-  // Use the server endpoint instead of calling OpenAI directly
-  const r = await fetch(API_ENDPOINT, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      messages: msgs,
-      max_tokens: 120
-    })
-  });
-
-  if (!r.ok) {
-    const errText = await r.text().catch(()=> "");
-    throw new Error(`API error ${r.status}: ${errText}`);
-  }
-
-  const d = await r.json();
-  return d.choices?.[0]?.message?.content?.trim() || "Keine Antwort.";
-}
 
 
 /* Voice Agent Functions */
