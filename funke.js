@@ -915,24 +915,36 @@ const style=document.createElement("style"); style.textContent=`
 
 /* Voice Agent Overlay (Mobile) */
 #fg-voice-agent-overlay{
-  position:fixed; inset:0; background:rgba(0,0,0,0.95); backdrop-filter:blur(10px);
+  position:fixed; inset:0;
+  background:linear-gradient(135deg, rgba(11,108,255,0.15) 0%, rgba(16,185,129,0.15) 100%);
+  backdrop-filter:blur(30px) saturate(180%);
+  -webkit-backdrop-filter:blur(30px) saturate(180%);
   z-index:999998; display:flex; align-items:center; justify-content:center;
+  animation:fg-overlay-fade-in 0.3s ease;
+}
+@keyframes fg-overlay-fade-in{
+  from{ opacity:0; }
+  to{ opacity:1; }
 }
 .fg-voice-agent-content{
   position:relative; width:100%; height:100%; display:flex; align-items:center; justify-content:center;
 }
 #fg-voice-agent-widget-container{
   width:100%; height:100%; display:flex; align-items:center; justify-content:center;
+  background:rgba(255,255,255,0.05); border-radius:20px; padding:20px;
+  box-shadow:0 8px 32px rgba(0,0,0,0.1), inset 0 1px 0 rgba(255,255,255,0.2);
 }
 .fg-voice-agent-close{
   position:absolute; top:20px; right:20px; z-index:10;
-  background:rgba(255,255,255,0.2); color:#fff; border:none;
-  width:44px; height:44px; border-radius:50%; font-size:24px;
+  background:rgba(255,255,255,0.25); color:#0b2343; border:2px solid rgba(255,255,255,0.3);
+  width:48px; height:48px; border-radius:50%; font-size:24px; font-weight:700;
   cursor:pointer; display:flex; align-items:center; justify-content:center;
-  transition:all 0.2s;
+  transition:all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow:0 4px 12px rgba(0,0,0,0.15);
 }
 .fg-voice-agent-close:hover{
-  background:rgba(255,255,255,0.3); transform:scale(1.1);
+  background:rgba(255,255,255,0.4); transform:scale(1.1) rotate(90deg);
+  box-shadow:0 6px 20px rgba(0,0,0,0.2);
 }
 
 /* Login Screen */
@@ -979,7 +991,7 @@ const style=document.createElement("style"); style.textContent=`
 /* מובייל */
 @media (max-width: 640px){
   #fg-launcher .fg-cta{ display:none; }
-  #fg-launcher .fg-bubble{ width:60px; height:60px; }
+  #fg-launcher .fg-bubble{ width:80px; height:80px; }
   #cpanel{
     width:100vw !important;
     height:100vh !important;
