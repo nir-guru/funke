@@ -35,6 +35,18 @@ app.get('/funke-widget.js', (req, res) => {
   res.sendFile(path.join(__dirname, 'funke.js'));
 });
 
+// Serve the chef avatar image
+app.get('/chef-avatar.png', (req, res) => {
+  res.type('image/png');
+  res.sendFile(path.join(__dirname, 'vector.png'));
+});
+
+// Serve the powered by image
+app.get('/powered-by.png', (req, res) => {
+  res.type('image/png');
+  res.sendFile(path.join(__dirname, 'powered_by.png'));
+});
+
 // API endpoint for OpenAI chat completions (protects API key)
 app.post('/api/chat', async (req, res) => {
   try {
